@@ -112,7 +112,12 @@ def selective(logits, threshold):
     probs = F.softmax(logits, dim=1)
     conf, pred = torch.max(probs, dim=1)
     return pred, conf >= threshold
-
+# ======================
+# NOISE FUNCTION (NEW)
+# ======================
+def add_noise(x, noise_level=0.1):
+    noise = torch.randn_like(x) * noise_level
+    return torch.clamp(x + noise, 0, 1)
 
 # ======================
 # EVALUATION
@@ -126,6 +131,7 @@ def evaluate(model, loader, threshold=0.7):
         for x, y in loader:
             x, y = x.to(device), y.to(device)
 
+            x = add_noise(x)   # NEW LINE (adds uncertainty)
             logits = model(x)
             pred, accept = selective(logits, threshold)
 
