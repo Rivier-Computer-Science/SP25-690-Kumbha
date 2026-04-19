@@ -8,3 +8,10 @@
 - Added README.md with comprehensive project description including problem statement, method, baseline, experimental setup, and expected results
 - Included LICENSE file
 - Pre-downloaded CIFAR-10 dataset in data/cifar-10-batches-py/ with training batches, test batch, and metadata
+
+# 04/19/2026 00:00 Configurable fast/complete training
+
+- Added `--mode` argument to `main.py` for `fast` (default) or `complete` training
+- Configured `fast` mode with reduced subset size and fewer epochs for fast experimentation
+- Configured `complete` mode to use full dataset and more epochs for full training
+- Refactored data loaders and training setup to support selectable training modes

@@ -7,6 +7,7 @@ import torchvision.models as models
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
+import argparse
 
 # ======================
 # DEVICE
@@ -18,6 +19,19 @@ print("Device:", device)
 # ======================
 # DATA
 # ======================
+TRAINING_MODES = {
+    "fast": {
+        "subset_size": 5000,
+        "cnn_epochs": 3,
+        "vit_epochs": 2,
+    },
+    "complete": {
+        "subset_size": None,
+        "cnn_epochs": 20,
+        "vit_epochs": 10,
+    },
+}
+
 transform_cnn = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
@@ -29,17 +43,38 @@ transform_vit = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-train_cnn = torchvision.datasets.CIFAR10("./data", train=True, download=True, transform=transform_cnn)
-test_cnn  = torchvision.datasets.CIFAR10("./data", train=False, download=True, transform=transform_cnn)
 
-train_vit = torchvision.datasets.CIFAR10("./data", train=True, download=True, transform=transform_vit)
-test_vit  = torchvision.datasets.CIFAR10("./data", train=False, download=True, transform=transform_vit)
+def get_data_loaders(mode="fast"):
+    if mode not in TRAINING_MODES:
+        raise ValueError(f"Unknown training mode: {mode}")
 
-train_loader_cnn = torch.utils.data.DataLoader(train_cnn, batch_size=128, shuffle=True)
-test_loader_cnn  = torch.utils.data.DataLoader(test_cnn, batch_size=128)
+    subset_size = TRAINING_MODES[mode]["subset_size"]
 
-train_loader_vit = torch.utils.data.DataLoader(train_vit, batch_size=64, shuffle=True)
-test_loader_vit  = torch.utils.data.DataLoader(test_vit, batch_size=64)
+    train_cnn = torchvision.datasets.CIFAR10(
+        "./data", train=True, download=True, transform=transform_cnn
+    )
+    test_cnn = torchvision.datasets.CIFAR10(
+        "./data", train=False, download=True, transform=transform_cnn
+    )
+
+    train_vit = torchvision.datasets.CIFAR10(
+        "./data", train=True, download=True, transform=transform_vit
+    )
+    test_vit = torchvision.datasets.CIFAR10(
+        "./data", train=False, download=True, transform=transform_vit
+    )
+
+    if subset_size is not None:
+        indices = torch.randperm(len(train_cnn))[:subset_size]
+        train_cnn = torch.utils.data.Subset(train_cnn, indices)
+        train_vit = torch.utils.data.Subset(train_vit, indices)
+
+    train_loader_cnn = torch.utils.data.DataLoader(train_cnn, batch_size=128, shuffle=True)
+    test_loader_cnn = torch.utils.data.DataLoader(test_cnn, batch_size=128)
+    train_loader_vit = torch.utils.data.DataLoader(train_vit, batch_size=64, shuffle=True)
+    test_loader_vit = torch.utils.data.DataLoader(test_vit, batch_size=64)
+
+    return train_loader_cnn, test_loader_cnn, train_loader_vit, test_loader_vit
 
 
 # ======================
@@ -153,50 +188,61 @@ def evaluate(model, loader, threshold=0.7):
     return np.mean(accs), np.mean(covs), np.mean(risks)
 
 
-# ======================
-# TRAIN MODELS
-# ======================
-print("Training CNN...")
-cnn = train(CNN(), train_loader_cnn, epochs=5)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Selective classification training")
+    parser.add_argument(
+        "--mode",
+        choices=list(TRAINING_MODES.keys()),
+        default="fast",
+        help="Training mode: fast experiment (default) or complete training over many epochs.",
+    )
+    args = parser.parse_args()
 
-print("Training ViT...")
-vit = train(get_vit(), train_loader_vit, epochs=3)
+    print(f"Using training mode: {args.mode}")
+    train_loader_cnn, test_loader_cnn, train_loader_vit, test_loader_vit = get_data_loaders(args.mode)
+    cnn_epochs = TRAINING_MODES[args.mode]["cnn_epochs"]
+    vit_epochs = TRAINING_MODES[args.mode]["vit_epochs"]
 
+    print("Training CNN...")
+    cnn = train(CNN(), train_loader_cnn, epochs=cnn_epochs)
 
-# ======================
-# RISK-COVERAGE CURVE
-# ======================
-thresholds = np.linspace(0, 1, 10)
+    print("Training ViT...")
+    vit = train(get_vit(), train_loader_vit, epochs=vit_epochs)
 
-cnn_cov, cnn_risk = [], []
-vit_cov, vit_risk = [], []
+    # ======================
+    # RISK-COVERAGE CURVE
+    # ======================
+    thresholds = np.linspace(0, 1, 10)
 
-for t in thresholds:
-    _, c1, r1 = evaluate(cnn, test_loader_cnn, t)
-    cnn_cov.append(c1)
-    cnn_risk.append(r1)
+    cnn_cov, cnn_risk = [], []
+    vit_cov, vit_risk = [], []
 
-    _, c2, r2 = evaluate(vit, test_loader_vit, t)
-    vit_cov.append(c2)
-    vit_risk.append(r2)
+    for t in thresholds:
+        _, c1, r1 = evaluate(cnn, test_loader_cnn, t)
+        cnn_cov.append(c1)
+        cnn_risk.append(r1)
 
-
-# ======================
-# PLOT
-# ======================
-plt.plot(cnn_cov, cnn_risk, label="CNN")
-plt.plot(vit_cov, vit_risk, label="ViT")
-
-plt.xlabel("Coverage")
-plt.ylabel("Risk")
-plt.title("Selective Classification: Risk-Coverage")
-plt.legend()
-plt.show()
+        _, c2, r2 = evaluate(vit, test_loader_vit, t)
+        vit_cov.append(c2)
+        vit_risk.append(r2)
 
 
-# ======================
-# FINAL OUTPUT
-# ======================
-print("\nFinal Results (threshold=0.7)")
-print("CNN:", evaluate(cnn, test_loader_cnn, 0.7))
-print("ViT:", evaluate(vit, test_loader_vit, 0.7))
+    # ======================
+    # PLOT
+    # ======================
+    plt.plot(cnn_cov, cnn_risk, label="CNN")
+    plt.plot(vit_cov, vit_risk, label="ViT")
+
+    plt.xlabel("Coverage")
+    plt.ylabel("Risk")
+    plt.title("Selective Classification: Risk-Coverage")
+    plt.legend()
+    plt.show()
+
+
+    # ======================
+    # FINAL OUTPUT
+    # ======================
+    print("\nFinal Results (threshold=0.7)")
+    print("CNN:", evaluate(cnn, test_loader_cnn, 0.7))
+    print("ViT:", evaluate(vit, test_loader_vit, 0.7))
