@@ -1,11 +1,9 @@
 import torch
 from torchvision import datasets, transforms
-import torchvision
 import numpy as np
 from PIL import Image
-import os
 
-def get_transforms(train=True, img_size=32):
+def get_transforms(train=True):
     if train:
         return transforms.Compose([
             transforms.RandomCrop(32, padding=4),
@@ -38,7 +36,7 @@ class CorruptedCIFAR10(datasets.CIFAR10):
         self.corruptions = corruptions or ['gaussian_noise', 'blur', 'brightness']
 
     def __getitem__(self, index):
-        img, target = super().__getitem__(index)
+        img, target = super().__getitem__(index)  
         if np.random.rand() < self.corruption_prob and self.corruptions:
             corr_type = np.random.choice(self.corruptions)
             severity = np.random.choice([1, 3, 5])
