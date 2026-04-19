@@ -2,8 +2,10 @@ import torch
 import yaml
 from models.cnn import CNN
 from utils.data_loader import get_dataloaders
-from utils.utils import set_seed, get_device, save_model
+from utils.utils import set_seed, save_model
 from training.trainer import Trainer
+from utils.metrics import plot_risk_coverage
+import numpy as np
 
 with open('config.yaml', 'r') as f:
     config = yaml.safe_load(f)
@@ -16,6 +18,7 @@ trainer = Trainer(model, config)
 for epoch in range(config['training']['epochs']):
     loss = trainer.train_epoch(trainloader)
     acc, cov, risk, ece = trainer.evaluate(testloader, reject_threshold=0.0)
-    print(f"Epoch {epoch+1}: Loss={loss:.4f}, Acc={acc:.4f}, Coverage=1.0, Risk={risk:.4f}, ECE={ece:.4f}")
+    print(f"Epoch {epoch+1}: Loss={loss:.4f}, Acc={acc:.4f}, Coverage=1.0000, Risk={risk:.4f}, ECE={ece:.4f}")
 
 save_model(model, "results/checkpoints/cnn_baseline.pth")
+print("CNN Baseline training completed.")
