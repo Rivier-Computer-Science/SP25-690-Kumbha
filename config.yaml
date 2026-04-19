@@ -1,0 +1,31 @@
+dataset:
+  name: cifar10
+  root: ./data
+  batch_size: 128
+  num_workers: 4
+
+model:
+  cnn:
+    num_classes: 10
+  vit:
+    model_name: vit_small_patch16_224
+    num_classes: 10
+    img_size: 224
+    pretrained: true
+
+training:
+  epochs: 50
+  lr: 0.001
+  weight_decay: 0.0005
+  optimizer: adam
+  seed: 42
+  device: cuda
+
+selective:
+  reject_threshold: 0.85
+  num_thresholds: 20
+
+corruption:
+  apply: true
+  types: [gaussian_noise, blur, brightness]
+  severity_levels: [1, 3, 5]
