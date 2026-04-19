@@ -188,6 +188,53 @@ def evaluate(model, loader, threshold=0.7):
     return np.mean(accs), np.mean(covs), np.mean(risks)
 
 
+def inference_metrics(model, loader, threshold=0.7):
+    model.eval()
+
+    all_preds = []
+    all_labels = []
+    all_conf = []
+    all_accept = []
+
+    with torch.no_grad():
+        for x, y in loader:
+            x, y = x.to(device), y.to(device)
+            x = add_noise(x)
+            logits = model(x)
+            probs = F.softmax(logits, dim=1)
+            conf, pred = torch.max(probs, dim=1)
+            accept = conf >= threshold
+
+            all_preds.append(pred.cpu())
+            all_labels.append(y.cpu())
+            all_conf.append(conf.cpu())
+            all_accept.append(accept.cpu())
+
+    all_preds = torch.cat(all_preds).numpy()
+    all_labels = torch.cat(all_labels).numpy()
+    all_conf = torch.cat(all_conf).numpy()
+    all_accept = torch.cat(all_accept).numpy()
+
+    overall_acc = accuracy_score(all_labels, all_preds)
+    coverage = all_accept.mean()
+    accepted_count = all_accept.sum()
+    accepted_acc = accuracy_score(all_labels[all_accept], all_preds[all_accept]) if accepted_count > 0 else 0.0
+    rejected_rate = 1.0 - coverage
+    risk = 1.0 - accepted_acc
+    average_confidence = all_conf.mean()
+
+    return {
+        "overall_accuracy": overall_acc,
+        "accepted_accuracy": accepted_acc,
+        "coverage": coverage,
+        "rejected_rate": rejected_rate,
+        "risk": risk,
+        "average_confidence": average_confidence,
+        "accepted_count": int(accepted_count),
+        "total_count": int(len(all_labels)),
+    }
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Selective classification training")
     parser.add_argument(
@@ -244,5 +291,29 @@ if __name__ == "__main__":
     # FINAL OUTPUT
     # ======================
     print("\nFinal Results (threshold=0.7)")
-    print("CNN:", evaluate(cnn, test_loader_cnn, 0.7))
-    print("ViT:", evaluate(vit, test_loader_vit, 0.7))
+    cnn_selective = evaluate(cnn, test_loader_cnn, 0.7)
+    vit_selective = evaluate(vit, test_loader_vit, 0.7)
+    print("CNN selective (acc, coverage, risk):", cnn_selective)
+    print("ViT selective (acc, coverage, risk):", vit_selective)
+
+    print("\nInference comparison at threshold=0.7")
+    cnn_inference = inference_metrics(cnn, test_loader_cnn, 0.7)
+    vit_inference = inference_metrics(vit, test_loader_vit, 0.7)
+
+    print("CNN inference metrics:")
+    print(f"  Overall accuracy:    {cnn_inference['overall_accuracy']:.4f}")
+    print(f"  Accepted accuracy:   {cnn_inference['accepted_accuracy']:.4f}")
+    print(f"  Coverage:            {cnn_inference['coverage']:.4f}")
+    print(f"  Rejection rate:      {cnn_inference['rejected_rate']:.4f}")
+    print(f"  Risk:                {cnn_inference['risk']:.4f}")
+    print(f"  Avg confidence:      {cnn_inference['average_confidence']:.4f}")
+    print(f"  Accepted / total:    {cnn_inference['accepted_count']} / {cnn_inference['total_count']}")
+
+    print("\nViT inference metrics:")
+    print(f"  Overall accuracy:    {vit_inference['overall_accuracy']:.4f}")
+    print(f"  Accepted accuracy:   {vit_inference['accepted_accuracy']:.4f}")
+    print(f"  Coverage:            {vit_inference['coverage']:.4f}")
+    print(f"  Rejection rate:      {vit_inference['rejected_rate']:.4f}")
+    print(f"  Risk:                {vit_inference['risk']:.4f}")
+    print(f"  Avg confidence:      {vit_inference['average_confidence']:.4f}")
+    print(f"  Accepted / total:    {vit_inference['accepted_count']} / {vit_inference['total_count']}")

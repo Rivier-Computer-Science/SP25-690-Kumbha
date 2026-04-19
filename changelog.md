@@ -1,3 +1,9 @@
+# 04/19/2026 00:05 Inference comparison metrics added
+
+- Added inference comparison metrics for CNN and ViT in `main.py`
+- Reported overall accuracy, accepted accuracy, coverage, rejection rate, risk, and average confidence
+- Printed model-level comparison results for inference performance at threshold 0.7
+
 # 04/19/2026 00:00 Initial Setup
 
 - Added main.py: PyTorch implementation for selective classification using ResNet18 (CNN) and Vision Transformer (ViT) on CIFAR-10 dataset
