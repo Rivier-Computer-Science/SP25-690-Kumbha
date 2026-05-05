@@ -1,24 +1,75 @@
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
-import yaml
-from models.cnn import CNN
-from utils.data_loader import get_dataloaders
-from utils.utils import set_seed, save_model
-from training.trainer import Trainer
-from utils.metrics import plot_risk_coverage
-import numpy as np
+import torch.optim as optim
 
-with open('config.yaml', 'r') as f:
-    config = yaml.safe_load(f)
+from config import CNN_BASELINE_CONFIG, TRAIN_CONFIG, CHECKPOINT_DIR
+from data.data_loader import get_cifar10_loaders
+from models.cnn import CNNBackbone
+from training.trainer import BaselineTrainer
+from utils.utils import set_seed, get_device, print_model_summary, plot_training_curves, save_results
 
-set_seed(config['training']['seed'])
-trainloader, testloader = get_dataloaders(config)
-model = CNN(num_classes=config['model']['cnn']['num_classes'])
-trainer = Trainer(model, config)
 
-for epoch in range(config['training']['epochs']):
-    loss = trainer.train_epoch(trainloader)
-    acc, cov, risk, ece = trainer.evaluate(testloader, reject_threshold=0.0)
-    print(f"Epoch {epoch+1}: Loss={loss:.4f}, Acc={acc:.4f}, Coverage=1.0000, Risk={risk:.4f}, ECE={ece:.4f}")
+def train_cnn_baseline():
+    set_seed(42)
+    device = get_device()
+    print(f"Device: {device}")
+    print("Training CNN Baseline (no rejection)...")
 
-save_model(model, "results/checkpoints/cnn_baseline.pth")
-print("CNN Baseline training completed.")
+    train_loader, val_loader = get_cifar10_loaders(
+        batch_size=TRAIN_CONFIG["batch_size"],
+        num_workers=TRAIN_CONFIG["num_workers"],
+    )
+
+    model = CNNBackbone(
+        num_classes=CNN_BASELINE_CONFIG["num_classes"],
+        dropout_rate=CNN_BASELINE_CONFIG["dropout_rate"],
+        use_rejection=False,
+    )
+
+    print_model_summary(model, "CNN Baseline")
+
+    optimizer = optim.AdamW(
+        model.parameters(),
+        lr=TRAIN_CONFIG["learning_rate"],
+        weight_decay=TRAIN_CONFIG["weight_decay"],
+    )
+
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=TRAIN_CONFIG["num_epochs"],
+        eta_min=1e-6,
+    )
+
+    trainer = BaselineTrainer(
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        config=TRAIN_CONFIG,
+        model_name="cnn_baseline",
+    )
+
+    history = trainer.fit(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        num_epochs=TRAIN_CONFIG["num_epochs"],
+    )
+
+    plot_training_curves(
+        history["train_losses"],
+        history["val_losses"],
+        history["train_accs"],
+        history["val_accs"],
+        model_name="cnn_baseline",
+    )
+
+    save_results(history, "cnn_baseline_training_history.json")
+
+    print(f"\nCNN Baseline training complete. Best val acc: {history['best_val_acc']*100:.2f}%")
+    return history
+
+
+if __name__ == "__main__":
+    train_cnn_baseline()
