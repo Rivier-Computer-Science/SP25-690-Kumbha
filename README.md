@@ -1,58 +1,151 @@
-# Learning When NOT to Predict: Selective Classification with Reject Option using CNN and Vision Transformers for Reliable Image Recognition
+# Learning When NOT to Predict: Selective Classification with Reject Option
 
-## Problem Statement and Motivation
-In many deep learning systems, models are forced to make predictions even when uncertain, leading to highly confident but incorrect outputs. This is problematic in real-world applications where errors have serious consequences. This project implements selective classification, allowing the model to reject uncertain inputs instead of making unreliable predictions. The goal is to improve reliability by enabling the model to recognize its limitations.
+## Overview
 
-## Task Definition
-Input: Image from CIFAR-10 (clean or corrupted with Gaussian noise, blur, or brightness variations).  
-Output: Predicted class label or reject decision based on confidence score.  
-The system maximizes accuracy on accepted samples while minimizing risk on rejected ones.
+This project implements selective classification for image recognition using CIFAR-10. Instead of forcing a prediction on every input, the model learns to abstain from uncertain samples. This reduces risk on accepted predictions and improves reliability under distribution shift.
+
+## Problem Statement
+
+Standard deep learning classifiers assign a class to every input regardless of confidence. This leads to high-confidence errors, particularly on out-of-distribution or noisy data. Selective classification addresses this by introducing a rejection mechanism: the model predicts only when it is sufficiently certain, and abstains otherwise.
+
+The core trade-off is between **coverage** (fraction of samples accepted) and **risk** (error rate on accepted samples). A risk-coverage curve characterizes this trade-off and serves as the primary evaluation tool.
 
 ## Models
-- CNN baseline (forced prediction on all inputs)
-- CNN with selective reject option
-- Vision Transformer with selective reject option
 
-## Dataset
-CIFAR-10 with generated corrupted versions (Gaussian noise, blur, brightness) to simulate real-world uncertainty.
+### CNN Baseline
+A ResNet-style deep CNN with 4 residual blocks and global average pooling. Uses standard softmax cross-entropy without any rejection capability. Provides the baseline accuracy and risk-coverage curve using maximum softmax probability as confidence.
 
-## Metrics
-- Accuracy on accepted samples
-- Coverage
-- Risk (error rate on accepted predictions)
-- Expected Calibration Error (ECE)
-- Risk-coverage curves
+### CNN with Selective Classification
+Same CNN backbone augmented with a dedicated selection head. The selection head produces a scalar score in [0, 1] representing the model's willingness to predict. Trained with a joint selective risk objective that penalizes low coverage.
 
-## Repository Structure
-- models/: CNN and ViT implementations
-- utils/: Data loading, metrics, helpers
-- training/: Training and evaluation logic
-- scripts/: Training and evaluation scripts
-- config.yaml: Hyperparameters
-- results/: Checkpoints and plots (generated)
+### Vision Transformer with Selective Classification
+A custom Vision Transformer with patch size 4, depth 6, 3 attention heads, and embedding dimension 192. The [CLS] token representation is used for both classification and selection. Trained with the same selective risk objective and a warmup + cosine annealing schedule.
+
+## Directory Structure
+
+```
+selective_classification/
+    config.py
+    main.py
+    requirements.txt
+    README.md
+    data/
+        data_loader.py
+    models/
+        cnn.py
+        vit.py
+    training/
+        trainer.py
+    scripts/
+        train_cnn_baseline.py
+        train_cnn_selective.py
+        train_vit_selective.py
+        evaluate_thresholds.py
+    utils/
+        metrics.py
+        utils.py
+    outputs/
+        checkpoints/
+        plots/
+        results/
+```
 
 ## Installation
-pip install -r requirements.txt
 
-## How to Run
+```bash
+pip install torch torchvision numpy matplotlib tqdm
+```
 
-1. Train CNN baseline:
-python scripts/train_cnn_baseline.py
+## Running the Project
 
-2. Train CNN with selective classification:
-python scripts/train_cnn_selective.py
+**Full pipeline (train all models + evaluate):**
+```bash
+python main.py
+```
 
-3. Train Vision Transformer with selective classification:
-python scripts/train_vit_selective.py
+**Train individual models:**
+```bash
+python main.py --mode train_cnn_baseline
+python main.py --mode train_cnn_selective
+python main.py --mode train_vit_selective
+```
 
-4. Evaluate with different rejection thresholds:
-python scripts/evaluate_thresholds.py --model vit_selective
+**Evaluate only (after training):**
+```bash
+python main.py --mode evaluate
+```
 
-## Expected Results
-Selective models achieve lower risk at the same coverage compared to the baseline. Vision Transformer shows better uncertainty estimation due to global attention.
+**Skip training, run evaluation with existing checkpoints:**
+```bash
+python main.py --skip_training
+```
 
-## Ethics and Responsible Use
-The system improves reliability but does not eliminate all errors. Rejected predictions require human review in critical applications. The model should not be used as a fully autonomous decision-making tool without oversight.
+## Experiments
 
-## Acknowledgments
-Project approved by Professor John Glossner.
+| Experiment | Description |
+|---|---|
+| Clean evaluation | All models on CIFAR-10 test set, no noise |
+| Noisy evaluation | Gaussian noise added at levels 0.1, 0.2, 0.3, 0.5 |
+| Threshold sweep | 100 thresholds from 0 to 1, full risk-coverage curve |
+| Model comparison | CNN Baseline vs CNN Selective vs ViT Selective |
+| Noise robustness | Accuracy and coverage plotted against noise level |
+
+## Metrics
+
+- **Coverage**: Fraction of test samples accepted (not rejected)
+- **Risk**: 1 - accuracy on accepted samples
+- **Accuracy**: Correct predictions over accepted samples
+- **AURC**: Area under risk-coverage curve (lower is better)
+- **E-AURC**: Excess AURC over the optimal baseline
+- **Risk at Coverage**: Risk when coverage is fixed to a target level
+
+## Outputs
+
+After running `python main.py`, the following are generated:
+
+**Checkpoints** (`outputs/checkpoints/`):
+- `cnn_baseline_best.pt`
+- `cnn_selective_best.pt`
+- `vit_selective_best.pt`
+
+**Plots** (`outputs/plots/`):
+- `cnn_baseline_training_curves.png`
+- `cnn_selective_training_curves.png`
+- `vit_selective_training_curves.png`
+- `risk_coverage_clean.png`
+- `risk_coverage_noise_0.1.png`
+- `risk_coverage_noise_0.3.png`
+- `noise_comparison.png`
+- `threshold_sweep_cnn_baseline.png`
+- `threshold_sweep_cnn_selective.png`
+- `threshold_sweep_vit_selective.png`
+
+**Results** (`outputs/results/`):
+- `cnn_baseline_training_history.json`
+- `cnn_selective_training_history.json`
+- `vit_selective_training_history.json`
+- `evaluation_clean.json`
+- `noise_evaluation_results.json`
+
+## Training Configuration
+
+| Parameter | Value |
+|---|---|
+| Epochs | 40 |
+| Batch size | 128 |
+| Optimizer | AdamW |
+| Learning rate | 1e-3 (CNN), 3e-4 (ViT) |
+| Weight decay | 1e-4 |
+| LR scheduler | Cosine annealing (ViT: warmup + cosine) |
+| Selective loss lambda | 0.5 |
+| Target coverage | 0.8 |
+
+## Loss Function
+
+The selective models are trained with a joint objective:
+
+```
+L = E[g(x) * CE(f(x), y)] / E[g(x)] + lambda * max(0, kappa - E[g(x)])^2
+```
+
+Where `g(x)` is the selection score, `f(x)` is the classifier output, `CE` is cross-entropy, `kappa` is the target coverage, and `lambda` controls the coverage penalty strength.
