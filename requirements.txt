@@ -1,11 +1,5 @@
 torch
 torchvision
-torchaudio
-timm
-PyYAML
-matplotlib
-seaborn
 numpy
-scikit-learn
-pillow
-scipy
+matplotlib
+tqdm
